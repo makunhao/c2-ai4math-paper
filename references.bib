@@ -1,0 +1,187 @@
+% =====================================================================
+%  references.bib
+%  C2 挑战：AI for Math 论文
+%  说明：本文件全部条目均经联网核实（arXiv 编号 / Nature 卷期页 / 会议出处 / DOI），
+%        无任何虚构引用。核实记录见 AI日志.md「阶段 2：文献核实」。
+% =====================================================================
+
+% ---------- 1. 推理生成范式（第一层：Generation） ----------
+
+@inproceedings{wei2022cot,
+  author    = {Jason Wei and Xuezhi Wang and Dale Schuurmans and Maarten Bosma and
+               Brian Ichter and Fei Xia and Ed H. Chi and Quoc V. Le and Denny Zhou},
+  title     = {Chain-of-Thought Prompting Elicits Reasoning in Large Language Models},
+  booktitle = {Advances in Neural Information Processing Systems 35 (NeurIPS 2022)},
+  year      = {2022},
+  note      = {arXiv:2201.11903},
+  url       = {https://arxiv.org/abs/2201.11903}
+}
+
+@article{chen2023pot,
+  author  = {Wenhu Chen and Xueguang Ma and Xinyi Wang and William W. Cohen},
+  title   = {Program of Thoughts Prompting: Disentangling Computation from Reasoning
+             for Numerical Reasoning Tasks},
+  journal = {Transactions on Machine Learning Research (TMLR)},
+  year    = {2023},
+  note    = {arXiv:2211.12588},
+  url     = {https://arxiv.org/abs/2211.12588}
+}
+
+@inproceedings{schick2023toolformer,
+  author    = {Timo Schick and Jane Dwivedi-Yu and Roberto Dess\`i and Roberta Raileanu and
+               Maria Lomeli and Luke Zettlemoyer and Nicola Cancedda and Thomas Scialom},
+  title     = {Toolformer: Language Models Can Teach Themselves to Use Tools},
+  booktitle = {Advances in Neural Information Processing Systems 36 (NeurIPS 2023)},
+  year      = {2023},
+  note      = {arXiv:2302.04761},
+  url       = {https://arxiv.org/abs/2302.04761}
+}
+
+% ---------- 2. 语义规约 / 自动形式化（第二层：Semantic Reduction） ----------
+
+@inproceedings{wu2022autoformalization,
+  author    = {Yuhuai Wu and Albert Q. Jiang and Wenda Li and Markus N. Rabe and
+               Charles Staats and Mateja Jamnik and Christian Szegedy},
+  title     = {Autoformalization with Large Language Models},
+  booktitle = {Advances in Neural Information Processing Systems 35 (NeurIPS 2022)},
+  pages     = {32353--32368},
+  year      = {2022},
+  note      = {arXiv:2205.12615},
+  url       = {https://arxiv.org/abs/2205.12615}
+}
+
+@article{xin2024deepseekprover,
+  author  = {Huajian Xin and Daya Guo and Zhihong Shao and Z. Z. Ren and Qihao Zhu and
+             Bo Liu and Chong Ruan and Wenda Li and Xiaodan Liang},
+  title   = {{DeepSeek-Prover}: Advancing Theorem Proving in {LLMs} through Large-Scale
+             Synthetic Data},
+  journal = {arXiv preprint arXiv:2405.14333},
+  year    = {2024},
+  url     = {https://arxiv.org/abs/2405.14333}
+}
+
+% ---------- 3. 形式验证（第三层：Verification） ----------
+
+@inproceedings{demoura2021lean4,
+  author    = {Leonardo de Moura and Sebastian Ullrich},
+  title     = {The {Lean} 4 Theorem Prover and Programming Language},
+  booktitle = {Automated Deduction -- CADE 28},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {12699},
+  pages     = {625--635},
+  publisher = {Springer},
+  year      = {2021},
+  doi       = {10.1007/978-3-030-79876-5_37}
+}
+
+@inproceedings{demoura2008z3,
+  author    = {Leonardo de Moura and Nikolaj Bj{\o}rner},
+  title     = {{Z3}: An Efficient {SMT} Solver},
+  booktitle = {Tools and Algorithms for the Construction and Analysis of Systems (TACAS 2008)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {4963},
+  pages     = {337--340},
+  publisher = {Springer},
+  year      = {2008},
+  doi       = {10.1007/978-3-540-78800-3_24}
+}
+
+% ---------- 4. 基准与数据集 ----------
+
+@inproceedings{cobbe2021gsm8k,
+  author    = {Karl Cobbe and Vineet Kosaraju and Mohammad Bavarian and Mark Chen and
+               Heewoo Jun and Lukasz Kaiser and Matthias Plappert and Jerry Tworek and
+               Jacob Hilton and Reiichiro Nakano and Christopher Hesse and John Schulman},
+  title     = {Training Verifiers to Solve Math Word Problems},
+  booktitle = {arXiv preprint arXiv:2110.14168},
+  year      = {2021},
+  url       = {https://arxiv.org/abs/2110.14168}
+}
+
+@inproceedings{hendrycks2021math,
+  author    = {Dan Hendrycks and Collin Burns and Saurav Kadavath and Akul Arora and
+               Steven Basart and Eric Tang and Dawn Song and Jacob Steinhardt},
+  title     = {Measuring Mathematical Problem Solving with the {MATH} Dataset},
+  booktitle = {Advances in Neural Information Processing Systems 34 (NeurIPS 2021), Datasets and Benchmarks Track},
+  year      = {2021},
+  note      = {arXiv:2103.03874},
+  url       = {https://arxiv.org/abs/2103.03874}
+}
+
+@inproceedings{zheng2022minif2f,
+  author    = {Kunhao Zheng and Jesse Michael Han and Stanislas Polu},
+  title     = {{miniF2F}: A Cross-System Benchmark for Formal Olympiad-Level Mathematics},
+  booktitle = {International Conference on Learning Representations (ICLR 2022)},
+  year      = {2022},
+  note      = {arXiv:2109.00110},
+  url       = {https://arxiv.org/abs/2109.00110}
+}
+
+@inproceedings{tsoukalas2024putnambench,
+  author    = {George Tsoukalas and Jasper Lee and John Jennings and Jimmy Xin and
+               Michelle Ding and Michael Jennings and Amitayush Thakur and Swarat Chaudhuri},
+  title     = {{PutnamBench}: A Benchmark for Evaluating Neural Theorem Provers on
+               Formal Mathematical Olympiad Problems},
+  booktitle = {Advances in Neural Information Processing Systems 37 (NeurIPS 2024), Datasets and Benchmarks Track},
+  year      = {2024},
+  note      = {arXiv:2407.11214},
+  url       = {https://arxiv.org/abs/2407.11214}
+}
+
+% ---------- 5. 系统级证据（Neuro-symbolic / 搜索增强） ----------
+
+@article{trinh2024alphageometry,
+  author  = {Trieu H. Trinh and Yuhuai Wu and Quoc V. Le and He He and Thang Luong},
+  title   = {Solving Olympiad Geometry without Human Demonstrations},
+  journal = {Nature},
+  volume  = {625},
+  number  = {7995},
+  pages   = {476--482},
+  year    = {2024},
+  doi     = {10.1038/s41586-023-06747-5}
+}
+
+@article{romera2024funsearch,
+  author  = {Bernardino Romera-Paredes and Mohammadamin Barekatain and Alexander Novikov and
+             Matej Balog and M. Pawan Kumar and Emilien Dupont and Francisco J. R. Ruiz and
+             Jordan S. Ellenberg and Pengming Wang and Omar Fawzi and Pushmeet Kohli and
+             Alhussein Fawzi},
+  title   = {Mathematical Discoveries from Program Search with Large Language Models},
+  journal = {Nature},
+  volume  = {625},
+  number  = {7995},
+  pages   = {468--475},
+  year    = {2024},
+  doi     = {10.1038/s41586-023-06924-6}
+}
+
+@article{hubert2025alphaproof,
+  author  = {Thomas Hubert and Rishi Mehta and Laurent Sartran and Mikl\'os Z. Horv\'ath and
+             others},
+  title   = {Olympiad-Level Formal Mathematical Reasoning with Reinforcement Learning},
+  journal = {Nature},
+  volume  = {651},
+  pages   = {607--613},
+  year    = {2025},
+  doi     = {10.1038/s41586-025-09833-y}
+}
+
+@article{charton2024patternboost,
+  author  = {Fran\c{c}ois Charton and Jordan S. Ellenberg and Adam Zsolt Wagner and
+             Geordie Williamson},
+  title   = {{PatternBoost}: Constructions in Mathematics with a Little Help from {AI}},
+  journal = {arXiv preprint arXiv:2411.00566},
+  year    = {2024},
+  url     = {https://arxiv.org/abs/2411.00566}
+}
+
+% ---------- 6. 课程一手材料 ----------
+
+@misc{chen2026lectures,
+  author       = {Xiaoyang Chen and Xiang Jiang},
+  title        = {Lectures on {AI} for Mathematics (Version 1.0)},
+  howpublished = {Lecture Notes, Tongji University},
+  year         = {2026},
+  month        = {April},
+  note         = {112 pages, dated 2026-04-11}
+}

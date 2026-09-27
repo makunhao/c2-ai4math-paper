@@ -1,0 +1,718 @@
+% =====================================================================
+%  paper.tex  —  C2 挑战交付物
+%  编译方式：xelatex -> bibtex -> xelatex -> xelatex
+%  （或直接使用 latexmk -xelatex paper.tex / tectonic paper.tex）
+% =====================================================================
+\documentclass[UTF8,a4paper,11pt]{ctexart}
+
+% ---------- 基础排版 ----------
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
+\usepackage[hidelinks]{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\captionsetup{font=small,labelfont=bf}
+\bibliographystyle{plainnat}
+
+% ---------- 定理环境 ----------
+\newtheorem{definition}{定义}[section]
+\newtheorem{proposition}{命题}[section]
+\newtheorem{remark}{注记}[section]
+
+% ---------- 自定义命令 ----------
+% 语义括号（不依赖 stmaryrd，避免额外宏包）
+\providecommand{\llbracket}{\mathopen{[\![}}
+\providecommand{\rrbracket}{\mathclose{]\!]}}
+\newcommand{\NL}{\mathrm{NL}}
+\newcommand{\IR}{\mathrm{IR}}
+\newcommand{\FOL}{\mathrm{FOL}}
+\newcommand{\HOL}{\mathrm{HOL}}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\code}[1]{\texttt{#1}}
+\DeclareMathOperator{\Verify}{Verify}
+\DeclareMathOperator{\Reduce}{Reduce}
+\DeclareMathOperator{\Render}{Render}
+
+% ---------- 标题信息 ----------
+\title{\bfseries 从自然语言到可验证推理：\\ 面向可靠 AI 数学的语义规约框架}
+
+\author{%
+  作者姓名\thanks{本文为 AI 挑战任务 C2 交付物。写作大纲依据课程一手材料
+  《Lectures on AI for Mathematics》（同济大学，2026）\citep{chen2026lectures}，
+  全部引用文献均经联网核实，见 \code{references.bib}。}%
+  \\[2pt]
+  \small 单位名称 \quad \texttt{author@example.edu}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% =====================================================================
+\begin{abstract}
+\noindent
+大语言模型（LLM）在数学推理任务上的表现持续提升，但其输出以自然语言为载体，
+既不可直接验证，也无法稳定传导到形式化证明系统。本文提出一个统一的
+\textbf{三层分解模型}，把「可靠的 AI 数学推理」拆解为\emph{生成层}
+（Generation Layer）、\emph{语义规约层}（Semantic Reduction Layer）与
+\emph{验证层}（Verification Layer）。基于对现有系统的分析，我们论证：
+当前系统的主要失败来源并非生成能力不足，也非验证器不可靠，而是
+\emph{语义规约层}的缺失与不稳定——自然语言命题到形式对象之间的映射既
+不具备单值性（ambiguity），也不具备类型完整性（missing typing），更不具备
+可逆性（non-invertibility）。据此，本文提出以\textbf{类型化中间表示}
+（Typed Intermediate Representation, Typed IR）为核心的框架：将自然语言
+仅作为人机接口，把可验证结构作为执行内核，并通过\textbf{双向一致性}
+（Bidirectional Consistency）约束保证 IR 与自然语言之间的可解释性与可回溯性。
+我们给出框架的形式化定义、流水线架构（生成 $\to$ IR $\to$ 验证 $\to$ 渲染）
+以及可证伪的实验设计，并讨论其在自动定理证明、数学解题与 AI 教育三类场景中的
+应用。本文的贡献是概念性的：它把「语义规约」从工程细节提升为核心系统组件，
+并给出与之匹配的评估指标（可验证率、一致性、回译保真度）。
+
+\vspace{6pt}
+\noindent\textbf{关键词：} AI 数学；语义规约；类型化中间表示；自动形式化；
+神经符号系统；Curry--Howard 对应；形式验证
+\end{abstract}
+
+% =====================================================================
+\section{引言}\label{sec:intro}
+
+\subsection{背景与动机}
+
+近年来的经验证据表明，大语言模型已经具备可观的数学推理能力。在
+Chain-of-Thought（CoT）提示下，模型能够生成人类可读的多步推理链
+\citep{wei2022cot}；在 GSM8K \citep{cobbe2021gsm8k} 与 MATH
+\citep{hendrycks2021math} 等基准上，准确率随模型规模与推理时计算量的增加
+而显著提高。与此同时，将计算外包给程序解释器（Program-of-Thoughts, PoT）
+\citep{chen2023pot}、或让模型自行学习调用外部工具（Toolformer）
+\citep{schick2023toolformer}，也都带来了可测量的收益。
+
+然而，这些能力的「可靠性」是脆弱的。自然语言推理链是一个
+\emph{非类型化、概率性}的文本序列：它的每一步都不携带形式语义，因而
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{不可直接验证}——只存在「答案对不对」这一末端信号，
+        中间步骤的正确性无法被机械地检查；
+  \item \textbf{不可局部定位}——当结论错误时，无法判定失败发生在哪一步，
+        因为步骤之间没有可推导关系；
+  \item \textbf{不可迁移}——同一条推理链无法被复用到形式系统中，
+        也无法作为证明对象被归档、检索与组合。
+\end{enumerate}
+
+与之相对，形式数学系统（Lean 4 \citep{demoura2021lean4}、Coq、Isabelle/HOL、
+SMT 求解器如 Z3 \citep{demoura2008z3}）提供了\emph{机器可检查}的证明语义：
+一个被编译器接受的证明对象，其正确性不依赖于生成它的模型是否「说谎」。
+AlphaGeometry \citep{trinh2024alphageometry}、FunSearch
+\citep{romera2024funsearch} 与 AlphaProof \citep{hubert2025alphaproof}
+正是这一路线的代表性成果：AlphaProof 在 2024 年国际数学奥林匹克（IMO）
+上结合 AlphaGeometry 解出六题中的四题，达到银牌水平，且其推理被形式系统自动
+验证。
+
+\subsection{问题陈述}
+
+于是问题自然浮现：\emph{既然两端都足够强，为什么端到端的可靠 AI 数学仍然困难？}
+
+本文的答案是：\textbf{缺失的是中间那一段}。生成端（LLM）与验证端
+（形式系统）之间存在一个语义鸿沟——自然语言命题需要被翻译成形式对象
+（这一过程称为\emph{自动形式化}，autoformalization \citep{wu2022autoformalization}）。
+这一翻译\emph{不是}一个轻量的预处理步骤，而是一个独立的、承载全部正确性风险的
+系统组件。我们把这一组件称为\textbf{语义规约层}。
+
+\subsection{核心论点与贡献}
+
+本文的核心论点是：
+
+\begin{quote}
+\itshape
+可靠 AI 数学推理 $\neq$ 生成 $+$ 验证。\\
+可靠性不能仅依赖「最终验证」，必须显式引入\emph{语义规约层}作为中间锚点。
+\end{quote}
+
+具体贡献如下：
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{概念贡献}：提出三层分解模型（\S\ref{sec:model}），
+        把「语义规约」确立为独立且核心的系统层，并论证它是当前系统的主要失败来源
+        （\S\ref{sec:bottleneck}）。
+  \item \textbf{方法贡献}：给出以 Typed IR 为核心的框架设计
+        （\S\ref{sec:framework}），包括类型系统、操作语义、约束系统与
+        可组合结构，以及「生成 $\to$ IR $\to$ 验证 $\to$ 渲染」的标准流水线。
+  \item \textbf{理论视角}：以 Curry--Howard 对应为语义规约提供类型论基础，
+        并形式化定义\emph{双向一致性}约束（可解释性 + 可回溯性）。
+  \item \textbf{评估贡献}：提出可证伪的实验设计（\S\ref{sec:experiment}），
+        引入比 accuracy 更敏感的指标——\emph{可验证率}与\emph{回译保真度}。
+\end{enumerate}
+
+本文是\emph{立场与方法}论文（position-and-method paper）：我们提出的框架
+以设计论证与可检验假设的形式给出，实验部分为预注册式的设计说明，
+而非已完成的实证结果。\S\ref{sec:discussion} 明确讨论了这一局限。
+
+% =====================================================================
+\section{问题分层模型}\label{sec:model}
+
+\subsection{三层结构}
+
+我们把一个 AI 数学推理系统分解为三个层次，如表~\ref{tab:layers} 所示。
+
+\begin{table}[htbp]
+\centering
+\caption{三层分解模型：性质、契约与代表工具}
+\label{tab:layers}
+\small
+\begin{tabular}{@{}p{2.3cm}p{3.4cm}p{3.6cm}p{4.2cm}@{}}
+\toprule
+\textbf{层} & \textbf{输出} & \textbf{性质} & \textbf{代表工具/方法} \\
+\midrule
+生成层
+  & 自然语言推理链
+  & 概率性、非类型化、非严格语义
+  & CoT \citep{wei2022cot}；PoT \citep{chen2023pot}；Toolformer \citep{schick2023toolformer} \\
+\addlinespace
+语义规约层
+  & 结构化形式对象
+  & \textbf{承载正确性风险的关键层}
+  & 自动形式化 \citep{wu2022autoformalization}；Typed IR（本文）\\
+\addlinespace
+验证层
+  & 布尔判定 / 证明对象
+  & 可靠、可判定（在系统内）、不可欺骗
+  & Lean 4 \citep{demoura2021lean4}；Z3 \citep{demoura2008z3}；Coq；Agda \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{第一层：生成层（Generation Layer）}
+
+生成层接收自然语言问题 $q \in \mathcal{Q}_{\NL}$，产出推理文本
+$r = (s_1, s_2, \dots, s_n)$，其中每个 $s_i$ 是一段自然语言陈述。其性质为：
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{概率性}：$r \sim P_\theta(\cdot \mid q)$，同一输入可产生不同输出；
+  \item \textbf{非类型化}：不存在 $\vdash s_i : T$ 这样的类型判定关系；
+  \item \textbf{非严格语义}：$s_i$ 的真值不独立于上下文与世界知识。
+\end{itemize}
+
+CoT \citep{wei2022cot} 展示了该层的核心价值：显式中间步骤可以显著提升
+多步推理的准确性。但这同时暴露了该层的根本缺陷——\emph{步骤的「看起来合理」
+与「语义正确」之间没有保障}。PoT \citep{chen2023pot} 与 Toolformer
+\citep{schick2023toolformer} 部分缓解了这一点：前者把\emph{计算}从
+\emph{推理}中剥离，交给外部解释器执行；后者让模型学习在何时调用哪个工具。
+二者的共同思路是「把不可靠的环节外包给可靠系统」——这正是本文所称
+语义规约的雏形，但它们都只覆盖了\emph{计算}这一个侧面，未触及
+\emph{语义}。
+
+\subsection{第二层：语义规约层（Semantic Reduction Layer）}
+
+语义规约层的职责是把自然语言陈述映射为形式对象，即定义一个映射
+\begin{equation}\label{eq:reduce}
+  \Reduce : \mathcal{Q}_{\NL} \times \mathcal{R}_{\NL}
+            \;\longrightarrow\; \mathcal{T}_{\IR},
+\end{equation}
+其中 $\mathcal{R}_{\NL}$ 是推理文本空间，$\mathcal{T}_{\IR}$ 是类型化中间
+表示的集合。$\mathcal{T}_{\IR}$ 中的元素可以是
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item 逻辑表达式（FOL / HOL 公式）；
+  \item 可执行程序（Python / 领域特定语言 DSL）；
+  \item 证明对象（proof objects）；
+  \item 类型化中间表示（Typed IR），即本文主张的统一载体。
+\end{itemize}
+
+该层的理论基础是 \textbf{Curry--Howard 对应}（命题即类型、证明即程序）：
+它保证了「构造一个类型为 $T$ 的项」与「证明命题 $T$」是同构的。因此，一旦
+自然语言命题被规约为类型 $T$，验证问题就化为类型检查问题，而验证层的
+可靠性可以完全继承。
+
+但严格的对应关系也立刻暴露出该层的困难：自然语言是\emph{欠类型化}的，
+而类型系统要求\emph{完全类型化}——这个落差必须在该层内部被弥合，
+且无法由下游的验证层代劳。这正是 \S\ref{sec:bottleneck} 要展开的核心。
+
+\subsection{第三层：验证层（Verification Layer）}
+
+验证层接收形式对象，返回判定结果。其检查内容包括：
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{自洽性}（consistency）：对象内部无矛盾；
+  \item \textbf{可推导性}（derivability）：证明对象可由公理与已有定理推出；
+  \item \textbf{事实一致性}（factual grounding）：结论与已知数学事实相容；
+  \item \textbf{约束满足}（constraint satisfaction）：所有显式约束被满足。
+\end{itemize}
+
+该层的工程可靠性已被充分验证：Lean 4 的 kernel
+\citep{demoura2021lean4} 与 Z3 \citep{demoura2008z3} 都是成熟且久经考验的
+系统；AlphaProof 的全部成绩都建立在「形式系统自动验证」之上
+\citep{hubert2025alphaproof}。因此，\emph{验证层不是瓶颈}——这一判断对
+后续的归因至关重要。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=8mm and 12mm,
+  box/.style={draw, rounded corners=3pt, minimum height=1.0cm,
+              minimum width=4.6cm, align=center, font=\small},
+  layerbox/.style={draw, dashed, rounded corners=6pt, inner sep=6pt},
+  ar/.style={-{Latex[length=2.5mm]}, thick}
+]
+\node[box, fill=blue!8]  (gen)  {\textbf{生成层}\\[1pt]
+  \footnotesize 自然语言推理链 $r$\\ \footnotesize（概率性、非类型化）};
+\node[box, fill=orange!12, below=of gen] (red) {\textbf{语义规约层}\\[1pt]
+  \footnotesize Typed IR $\;\tau \in \mathcal{T}_{\IR}$\\ \footnotesize（瓶颈所在）};
+\node[box, fill=green!10, below=of red]  (ver) {\textbf{验证层}\\[1pt]
+  \footnotesize 类型检查 / SMT 判定\\ \footnotesize（可靠、可判定）};
+
+\draw[ar] (gen) -- node[right, font=\footnotesize, xshift=2pt]{$\Reduce$（自动形式化）} (red);
+\draw[ar] (red) -- node[right, font=\footnotesize, xshift=2pt]{$\Verify$（类型检查）} (ver);
+\draw[ar, dashed, gray] (ver.east) to[out=0,in=0, looseness=1.9]
+  node[right, font=\footnotesize, align=left, xshift=2pt]
+  {失败回传\\（反例 $\to$ 修订 IR）} (red.east);
+
+\node[layerbox, fit=(gen), inner sep=4pt] {};
+\end{tikzpicture}
+\caption{三层分解与语义规约层的中心地位。实线为前向流水线，
+虚线为失败回传路径：验证失败时，修订的对象应是 IR 而非自然语言推理链——
+这正是把语义规约确立为独立层的直接工程后果。}
+\label{fig:three-layers}
+\end{figure}
+
+% =====================================================================
+\section{核心问题：语义规约瓶颈}\label{sec:bottleneck}
+
+\subsection{归因观察}
+
+我们对现有系统的失败模式给出如下归因假设：
+
+\begin{quote}
+\itshape
+当前系统的失败主要源于第二层（语义规约），而非生成层或验证层。
+\end{quote}
+
+这一归因可以被具体的经验事实支持。autoformalization 的原始工作报告：
+LLM 能够把约 $25.3\%$ 的数学竞赛题\emph{完美}翻译为 Isabelle/HOL 形式规格
+\citep{wu2022autoformalization}——换言之，\emph{近四分之三的翻译存在缺陷}。
+与此同时，同一批工作显示，用自动形式化产物训练神经定理证明器后，
+miniF2F \citep{zheng2022minif2f} 上的证明率从 $29.6\%$ 提升到 $35.2\%$。
+这说明：\emph{涨点来自规约质量，而非生成模型容量}。
+
+更近期的证据来自 PutnamBench \citep{tsoukalas2024putnambench}：这是一个
+基于 Lean 4 的形式化奥林匹克级基准，其结果显示，即便在强模型上，
+形式化竞赛数学的通过率仍然很低——失败更多发生在「把题面正确形式化」
+这一环节，而非「找不到证明」。
+
+\subsection{三点结构性困难}
+
+我们把该层的困难归纳为三条：
+
+\paragraph{(1) 语义不稳定（ambiguity）.}
+自然语言命题与形式命题之间不存在确定映射。例如「$f$ 是连续的」
+在 $\mathbb{R}$ 上至少对应 $\varepsilon$-$\delta$ 定义、序列连续、
+拓扑连续三种形式化，而它们在一般拓扑空间中并不等价。$\Reduce$ 因此
+\emph{不是函数}，而是一个关系 $\Reduce \subseteq \mathcal{Q}_{\NL} \times \mathcal{T}_{\IR}$。
+
+\paragraph{(2) 类型不完整（missing typing）.}
+自然语言不携带类型信息。量词的作用域、函数的定义域与值域、
+集合的宇宙层级，均需由规约层补齐。若补齐错误，得到的形式对象
+\emph{类型正确却语义错误}——这类错误最危险，因为它能通过验证层的
+\emph{形式}检查，却验证了一个并非原问题的命题。
+
+\paragraph{(3) 映射不可逆（non-invertibility）.}
+$\Reduce$ 一般没有逆映射。这意味着无法仅凭 IR 恢复原始意图；
+若缺少双向约束，系统将丧失可解释性与可回溯性——当验证通过时，
+人类无法确认「通过的」究竟是原命题还是被悄悄改写过的命题。
+
+\subsection{后果}
+
+上述三点分别导致：
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{验证失效}（no handle to verify）：$\Reduce$ 不确定时，
+        验证层没有可检查的对象，只能退化为对最终答案的比对；
+  \item \textbf{幻觉不可检测}：一个类型正确但语义漂移的对象会被验证器
+        \emph{接受}，从而把幻觉「洗白」为已证结论；
+  \item \textbf{错误不可归因}：由于缺少中间锚点，失败无法被定位到具体步骤，
+        迭代改进只能靠盲试。
+\end{enumerate}
+
+\begin{remark}
+第 (2) 点值得强调：\emph{验证器的可靠性与系统的可靠性不是同一件事}。
+一个 100\% 正确的类型检查器，与一个把错误命题形式化的映射组合起来，
+整体系统的可靠性可以接近零。这是「生成 $+$ 验证」这一朴素配方失效的
+根本原因。
+\end{remark}
+
+% =====================================================================
+\section{方法框架}\label{sec:framework}
+
+\subsection{类型化中间表示（Typed IR）}
+
+我们主张以统一的 Typed IR 作为语义规约层的输出载体。Typed IR 由四个
+组件构成：
+
+\paragraph{(a) 类型系统（Type System）.}
+给定基类型集合 $\mathcal{B}$（如 $\mathbb{N}$、$\mathbb{R}$、$\mathrm{Prop}$）
+与类型构造子（$\to$、$\times$、$\Pi$、$\Sigma$），定义类型项
+\begin{equation}\label{eq:type}
+  T \;::=\; b \mid T \to T \mid T \times T \mid \Pi x{:}T.\,T \mid \Sigma x{:}T.\,T,
+  \qquad b \in \mathcal{B}.
+\end{equation}
+
+\paragraph{(b) 操作语义（Operational Semantics）.}
+为 IR 的每个构造子给出小步语义规则 $\tau \longrightarrow \tau'$，使 IR
+可以被\emph{执行}（用于程序类对象）或被\emph{归约}（用于证明类对象）。
+这使得 IR 不是静态标注，而是可运行的语义载体。
+
+\paragraph{(c) 约束系统（Constraints）.}
+IR 上附加一组约束 $\mathcal{C} = \{c_1, \dots, c_m\}$，用于编码自然语言中
+隐含但未言明的前提，例如定义域非空、量词作用域、可测性等。约束可被
+翻译为 SMT 公式并交由 Z3 \citep{demoura2008z3} 判定。
+
+\paragraph{(d) 可组合结构（Composable Graph / AST）.}
+IR 是一个有向无环图（AST 或 workflow graph），节点是带类型的子对象，
+边是依赖或蕴含关系。可组合性使得局部修订成为可能：验证失败时，
+只需回退到失败的子节点重新规约，而不必重写整条推理链。
+
+\begin{definition}[良类型 IR]\label{def:welltyped}
+称 IR 对象 $\tau$ 关于上下文 $\Gamma$ 是\emph{良类型的}，记作
+$\Gamma \vdash \tau : T$，当且仅当 $\tau$ 可由式~\eqref{eq:type} 的类型规则
+推导，且其全部子节点良类型，且 $\mathcal{C}$ 在 $\tau$ 上可满足。
+\end{definition}
+
+\subsection{流水线架构}
+
+框架的标准流水线为
+\begin{equation}\label{eq:pipeline}
+  \underbrace{q}_{\text{自然语言}}
+  \;\xrightarrow{\;\Reduce\;}\;
+  \underbrace{\tau}_{\text{Typed IR}}
+  \;\xrightarrow{\;\Verify\;}\;
+  \underbrace{v \in \{\top, \bot\}}_{\text{判定}}
+  \;\xrightarrow{\;\Render\;}\;
+  \underbrace{\hat{r}}_{\text{自然语言输出}} .
+\end{equation}
+
+关键设计原则是：
+
+\begin{quote}
+\itshape
+自然语言只是 interface；可验证结构才是 execution core。
+\end{quote}
+
+即：人类读写自然语言，但系统内部的一切计算、传递与判定都发生在 IR 上。
+$\Render$ 负责把验证后的 IR 重新渲染为人类可读的文本/证明说明，
+但\emph{渲染结果不参与正确性判定}——它只是 IR 的一个视图。
+
+\begin{algorithm}[htbp]
+\caption{语义规约驱动的可靠推理（SRR: Semantic-Reduction Reasoning）}
+\label{alg:srr}
+\begin{algorithmic}[1]
+\Require 自然语言问题 $q$；规约器 $\Reduce$；验证器 $\Verify$；渲染器 $\Render$
+\Ensure 判定 $v$ 与解释 $\hat{r}$
+\State $\tau_0 \gets \Reduce(q)$ \Comment{初次规约：生成候选 Typed IR}
+\If{$\tau_0$ 未通过良类型检查（定义~\ref{def:welltyped}）}
+    \State $\tau_0 \gets \textsc{Repair}(\tau_0)$ \Comment{补齐类型/约束，局部修订}
+\EndIf
+\State $\mathcal{C} \gets \textsc{ExtractConstraints}(\tau_0)$
+\ForAll{$c \in \mathcal{C}$} \Comment{逐条 SMT 判定，定位失败约束}
+    \If{$\textsc{SMT}(c) = \bot$}
+        \State 记录反例 $\rho_c$；$\tau_0 \gets \textsc{Refine}(\tau_0, \rho_c)$
+    \EndIf
+\EndFor
+\State $v \gets \Verify(\tau_0)$ \Comment{类型检查 / 形式证明检查}
+\State $\hat{r} \gets \Render(\tau_0, v)$ \Comment{渲染为自然语言，附 IR 引用}
+\State \Return $(v, \hat{r}, \tau_0)$ \Comment{一并返回 IR，供审计}
+\end{algorithmic}
+\end{algorithm}
+
+算法~\ref{alg:srr} 与朴素「CoT 后比对答案」的差别在于：
+它\emph{始终保有一个可检查的形式对象}，并把它作为唯一的真相来源
+（single source of truth）。
+
+\subsection{双向一致性}
+
+仅有关注前向映射是不够的：$\Reduce$ 不可逆，使得前向正确性无法被人类确认。
+因此我们引入\textbf{双向一致性}（Bidirectional Consistency）约束。
+
+\begin{definition}[双向一致性]\label{def:biconsistency}
+设 $\tau = \Reduce(q)$，$\hat{q} = \Render(\tau)$。称 $(q, \tau)$ 满足
+双向一致性，当且仅当
+\begin{enumerate}[leftmargin=1.8em,itemsep=2pt]
+  \item \textbf{可解释性}（interpretability）：$\hat{q}$ 是 $\tau$ 的一个
+        忠实视图，即 $\sem{\hat{q}} = \sem{\tau}$；
+  \item \textbf{可回溯性}（traceability）：存在从 $\hat{q}$ 的每个语义单元
+        到 $\tau$ 的子结构的一一对应（alignment），记作 $\alpha$。
+\end{enumerate}
+\end{definition}
+
+可回溯性要求给出对齐映射
+\begin{equation}\label{eq:align}
+  \alpha : \mathrm{Seg}(\hat{q}) \;\longrightarrow\; \mathrm{Sub}(\tau),
+\end{equation}
+使得人类可以逐句核对「我看到的这句话」对应 IR 的哪一部分。
+这直接对抗 \S\ref{sec:bottleneck} 中的第 (2)(3) 条困难：
+类型补齐的每一步都必须显式暴露，语义漂移无法隐藏。
+
+\begin{proposition}\label{prop:loss}
+若系统满足双向一致性，则任何「类型正确但语义错误」的规约结果
+（\S\ref{sec:bottleneck} 第 (2) 条）在原则上可被人类审计发现。
+\end{proposition}
+
+\begin{proof}[证明思路]
+由定义~\ref{def:biconsistency} 的可回溯性，存在对齐 $\alpha$ 把 $\hat{q}$
+的每个语义单元映射到 $\tau$ 的子结构。若 $\tau$ 相对 $q$ 发生了语义漂移，
+则必存在某个语义单元（如量词作用域、定义域条件）在 $\hat{q}$ 中
+无对应或对应错位；该错位可由审计者沿 $\alpha$ 比对发现。
+故漂移不可能在保持 $\hat{q}$ \emph{与原问题逐单元一致}的同时不被察觉。
+\end{proof}
+
+\begin{remark}
+命题~\ref{prop:loss} 是\emph{可能性}命题而非\emph{复杂性}命题：
+它保证漂移\emph{可被发现}，但不保证审计成本可接受。降低审计成本
+（例如只审计 $\alpha$ 上置信度最低的若干单元）是一个独立的工程问题。
+\end{remark}
+
+% =====================================================================
+\section{与现有工作的关系}\label{sec:related}
+
+\subsection{推理范式}
+
+Chain-of-Thought \citep{wei2022cot} 奠定了「显式中间步骤」的范式，
+但它把推理与计算混在同一个文本序列中。PoT \citep{chen2023pot} 明确把
+\emph{计算}剥离给外部解释器，在多个数据集上平均带来约 $12\%$ 的增益。
+Toolformer \citep{schick2023toolformer} 进一步让模型\emph{自监督地}学会
+何时调用工具。这三者代表了从「纯文本推理」到「模型 $+$ 外部系统」的
+演进，但其外部系统承担的是\emph{计算}，而非\emph{语义规约}。
+
+\subsection{自动形式化与神经定理证明}
+
+autoformalization \citep{wu2022autoformalization} 首次系统性地把
+「自然语言 $\to$ 形式规格」作为独立任务，并报告了 $25.3\%$ 的完美翻译率。
+DeepSeek-Prover \citep{xin2024deepseekprover} 通过大规模合成数据推进了
+形式定理证明的性能。这些工作是本文框架\emph{最直接的先行者}：它们事实上
+构建了语义规约层的雏形。本文的差异在于\emph{定位}——我们不把自动形式化
+视为一个待优化的翻译模块，而把它视为决定整个系统可靠性的\emph{核心层}，
+并据此提出以 Typed IR 为载体的统一设计，以及双向一致性这样的显式契约。
+
+\subsection{神经符号系统}
+
+AlphaGeometry \citep{trinh2024alphageometry} 用神经语言模型与符号演绎引擎
+协同求解奥林匹克几何，无需人类演示；FunSearch \citep{romera2024funsearch}
+用 LLM 引导的程序搜索在组合数学中发现了新的构造；
+AlphaProof \citep{hubert2025alphaproof} 通过强化学习在 Lean 环境中学习证明，
+在 2024 IMO 上达到银牌水平；PatternBoost
+\citep{charton2024patternboost} 在局部搜索与全局 transformer 之间交替，
+为若干长期开放问题找到了更好的构造，包括一个悬置 30 年的猜想的反例。
+这些系统是\emph{强证据}：形式化环境 $+$ 可靠验证器 $+$ 搜索/学习，
+确实可以产生可验证的新数学。它们的共同特征是\emph{把正确性锚定在形式系统上}——
+这与本文的主张一致。本文补充的是：当输入来自自然语言（而非预先形式化的
+题面）时，锚定本身需要一整个语义规约层来支撑。
+
+\begin{table}[htbp]
+\centering
+\caption{与现有工作的定位对比}
+\label{tab:compare}
+\small
+\begin{tabular}{@{}p{3.0cm}p{2.5cm}p{2.6cm}p{2.6cm}p{3.0cm}@{}}
+\toprule
+\textbf{工作} & \textbf{计算外包} & \textbf{语义规约} & \textbf{形式验证} & \textbf{规约层地位} \\
+\midrule
+CoT \citep{wei2022cot}            & 否 & 否 & 否 & 无 \\
+PoT \citep{chen2023pot}           & 是 & 否 & 否 & 无（仅计算）\\
+Toolformer \citep{schick2023toolformer} & 是（多工具）& 否 & 否 & 无 \\
+autoformalization \citep{wu2022autoformalization} & 否 & \textbf{是} & 是 & 作为翻译模块 \\
+AlphaProof \citep{hubert2025alphaproof} & 是 & 隐含 & \textbf{是} & 隐含在 RL 流程中 \\
+\addlinespace
+\textbf{本文} & 是（IR 可执行）& \textbf{是（核心）}& 是 & \textbf{独立核心层 $+$ 双向契约} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{本文的差异}
+
+如表~\ref{tab:compare} 所示，本文与已有工作的差别不在「是否使用形式验证」
+（多数工作都用了），而在\emph{是否把语义规约确立为独立的、有显式契约的
+系统层}。我们把这一层的形式化缺口总结为三点：缺少统一载体（Typed IR）、
+缺少双向契约（可解释性 $+$ 可回溯性）、缺少专门的评估指标。
+
+% =====================================================================
+\section{应用场景}\label{sec:application}
+
+\subsection{自动定理证明（ATP）}
+
+在证明辅助环境（Lean 4 \citep{demoura2021lean4}、Coq）中，工作流为：
+LLM 生成证明草图 $\to$ 规约为 IR $\to$ 展开为形式证明项 $\to$ 内核检查。
+与 AlphaProof 式流程的差别在于：我们把「草图 $\to$ IR」这一步显式化，
+并允许在人机协作中让人类审计 IR（利用定义~\ref{def:biconsistency} 的
+对齐映射）。这对\emph{教学}与\emph{审稿}场景尤其有价值——人类需要理解
+证明为什么对，而不只是知道它被接受了。
+
+\subsection{数学解题系统}
+
+对文字应用题（word problems，如 GSM8K \citep{cobbe2021gsm8k}），
+标准流程为：题面 $\to$ 类型化程序 $\to$ 执行器求解。
+这与 PoT \citep{chen2023pot} 的下游结构相同；本文的补充是在
+「题面 $\to$ 程序」之间插入显式类型标注与约束提取（$\mathcal{C}$），
+使「单位、定义域、边界条件」这类隐含前提不再被静默丢弃。
+
+\subsection{教学与评估}
+
+在教育场景中，学生解答本身是自然语言。框架可把学生解答规约为 IR，
+然后在 IR 层做\emph{结构化}诊断：不只判定对错，而是定位到
+「哪一步的类型/约束出了问题」。这比基于最终答案的评分更有信息量，
+且由于 IR 可回溯，反馈可以对齐到学生的原句（式~\eqref{eq:align}）。
+
+% =====================================================================
+\section{实验设计}\label{sec:experiment}
+
+\subsection{数据集}
+
+选择三个层次分明的数据集，以分离「计算难度」与「规约难度」：
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{GSM8K} \citep{cobbe2021gsm8k}：小学应用题，计算简单，规约中等；
+  \item \textbf{MATH} \citep{hendrycks2021math}：竞赛级数学，计算与规约均变难；
+  \item \textbf{miniF2F} \citep{zheng2022minif2f} 与 \textbf{PutnamBench}
+        \citep{tsoukalas2024putnambench}：直接以形式系统为后端，
+        规约难度最高。
+\end{itemize}
+
+\subsection{对比设置}
+
+\begin{table}[htbp]
+\centering
+\caption{实验对比设置}
+\label{tab:setup}
+\small
+\begin{tabular}{@{}p{1.0cm}p{4.6cm}p{7.6cm}@{}}
+\toprule
+\textbf{组} & \textbf{系统} & \textbf{说明} \\
+\midrule
+A & 纯 LLM（CoT）& 仅生成层，答案比对式评估 \\
+B & LLM $+$ 外部计算（PoT 式） & 生成层 $+$ 计算外包 \\
+C & LLM $+$ 形式验证（端到端自动形式化） & 生成层 $+$ 规约 $+$ 验证，但规约层不显式化 \\
+\addlinespace
+\textbf{D} & \textbf{本文框架（SRR, 算法~\ref{alg:srr}）} & \textbf{显式 Typed IR $+$ 双向一致性契约} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{评估指标}
+
+除常规正确率外，我们提出三个针对规约层的指标：
+
+\paragraph{(1) 正确率（accuracy）.}
+$\mathrm{Acc} = \frac{1}{N}\sum_i \mathbb{1}[\hat{a}_i = a_i]$，其中
+$\hat{a}_i$ 为系统答案，$a_i$ 为参考答案。这是可比基线。
+
+\paragraph{(2) 可验证率（verifiability）.}
+定义
+\begin{equation}\label{eq:verifiability}
+  \mathrm{Ver} = \frac{\#\{\, i : \Gamma \vdash \tau_i : T_i \ \text{且}\ \mathcal{C}_i \text{ 可满足} \,\}}{N}.
+\end{equation}
+它度量「有多少比例的输入被成功规约为良类型 IR」。这是该框架下最灵敏的
+指标——若 $\mathrm{Ver}$ 低，则系统退化为 A 组，无论生成层多强。
+
+\paragraph{(3) 回译保真度（back-translation fidelity）.}
+定义
+\begin{equation}\label{eq:fidelity}
+  \mathrm{Fid} = \frac{1}{N}\sum_{i}
+     \mathrm{Sim}\!\big(q_i,\ \Render(\tau_i)\big),
+\end{equation}
+其中 $\mathrm{Sim}$ 采用人工评分（盲评）或参考答案约束下的语义等价判定。
+$\mathrm{Fid}$ 直接检验双向一致性（定义~\ref{def:biconsistency}）是否成立。
+
+\subsection{假设}
+
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{H1（归因假设）}：在 MATH 与 miniF2F 上，C 组相对 B 组的
+        失败增量主要来自 $\Reduce$（可用 $\mathrm{Ver}$ 的下降解释），
+        而非 $\Verify$。
+  \item \textbf{H2（框架假设）}：D 组在 $\mathrm{Ver}$ 与 $\mathrm{Fid}$
+        上显著优于 C 组，且这一优势在规约难度最高的 PutnamBench 上最大。
+  \item \textbf{H3（边界假设）}：在 GSM8K 上，D 组相对 A/B 的优势有限——
+        因为简单题目的规约难度低，语义规约层的边际收益小。
+\end{itemize}
+
+\begin{remark}
+H3 是刻意设置的\emph{证伪性}预测：若框架在所有数据集上都有大幅优势，
+反而提示指标设计存在漏洞（例如泄漏了额外信息）。一个诚实的方法论文
+应当给出自己\emph{不}适用的边界。
+\end{remark}
+
+% =====================================================================
+\section{讨论}\label{sec:discussion}
+
+\subsection{局限}
+
+\paragraph{(1) 本框架尚未完成端到端实证.}
+本文给出的是设计论证与可检验假设，实验部分（\S\ref{sec:experiment}）是
+预注册式方案而非已完成结果。因此，H1--H3 目前处于\emph{待检验}状态。
+这是本文最主要的局限。
+
+\paragraph{(2) IR 设计复杂、成本高.}
+设计一个既表达力充分又可判定的类型系统，需要领域特定的权衡；
+每个新领域（分析、代数、组合）都需要扩展 IR 的构造子。
+这与 FunSearch \citep{romera2024funsearch} 式的「轻量 LLM $+$ 现成搜索」
+相比，前期投入显著更高。
+
+\paragraph{(3) 语义映射成本高.}
+$\Reduce$ 的调用可能涉及多次 LLM 请求 $+$ 形式检查，成本随问题复杂度上升。
+在低价值场景（如简单算术）中入不敷出——这正是 H3 所指的边界。
+
+\paragraph{(4) 双向一致性的审计成本.}
+命题~\ref{prop:loss} 只保证漂移「可被发现」，不保证廉价。对齐映射 $\alpha$
+的人工核查仍需成本。
+
+\subsection{扩展方向}
+
+\paragraph{(1) 通用推理系统.}
+把 Typed IR 从数学推广到一般演绎推理（法律、程序验证、科学论证），
+其中「命题」与「证据」同样存在自然语言与形式对象之间的鸿沟。
+
+\paragraph{(2) Agent 系统.}
+在多智能体架构中，每个 agent 的中间结论都应是可审计的 IR 对象，
+而非自由文本。这等价于把本文的双向一致性契约作为 agent 间通信协议，
+从而使多 agent 协作\emph{可验证}而非仅仅是「看起来协调」。
+这与课程材料中提到的 agent 架构方向一致 \citep{chen2026lectures}。
+
+\paragraph{(3) 与搜索/学习结合.}
+IR 的图结构天然适合作为搜索空间：可把 PatternBoost
+\citep{charton2024patternboost} 式的局部/全局交替搜索应用到 IR 图上，
+用「验证是否通过」作为唯一的奖励信号——因为该信号完全可靠
+（由验证层保证），这使得强化学习的目标函数免于被幻觉污染。
+
+% =====================================================================
+\section{结论}\label{sec:conclusion}
+
+本文的核心结论可凝练为一个等式：
+\begin{equation}\label{eq:conclusion}
+  \boxed{\ \text{可靠 AI 推理} \;=\; \text{生成} \;+\; \text{语义规约} \;+\; \text{验证}\ }
+\end{equation}
+其中三项缺一不可，且\emph{语义规约}是当前最薄弱、也最常被隐式跳过的一环。
+
+本文的关键贡献有两项：
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+  \item 明确提出「\textbf{语义规约层}」是可靠 AI 数学的核心瓶颈，
+        以三层分解模型给出可检验的归因假设（H1）；
+  \item 提供以 \textbf{Typed IR} 为载体的结构化路径，配合
+        双向一致性契约与三个新指标，把「可靠性」从口号变为可测量的工程目标。
+\end{enumerate}
+
+从更广的视角看，本文主张的转变是：\emph{不要把自然语言当作系统的内部
+表示}。自然语言适合作为人机接口，但可靠性必须在结构化的、可验证的
+表示上获得。这一原则不限于数学——任何「生成 $\to$ 需要被相信」的场景，
+都需要同样的中间层。
+
+% =====================================================================
+\section*{致谢}
+本文写作大纲参考了课程一手材料《Lectures on AI for Mathematics》
+\citep{chen2026lectures}。全部引用均经联网逐条核实；
+核实方法与记录见随附的 \code{AI日志.md}（阶段 2）。
+
+% =====================================================================
+\bibliography{references}
+
+\end{document}
